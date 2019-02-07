@@ -1,0 +1,144 @@
+<html>
+
+<head>
+    <style>
+        #container {
+            margin: 0px auto;
+            width: 640px;
+            height: 480px;
+            border: 10px #333 solid;
+        }
+
+        #canvasContainer {
+            margin: 0px auto;
+            width: 640px;
+            height: 480px;
+            border: 10px #333 solid;
+        }
+
+        #videoElement {
+            width: 640px;
+            height: 480px;
+            background-color: #666;
+        }
+        
+        #canvasElement {
+            width: 640px;
+            height: 480px;
+            background-color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="build/webpiled-opencv-calibration.js"></script>
+
+    <div id="container">
+        <video autoplay="true" id="videoElement">
+
+        </video>
+    </div>
+    
+    <div id="canvasContainer">
+        <canvas id="canvasElement">
+
+        </canvas>
+    </div>
+
+    <hr></hr>
+
+    <script>
+        if (navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia({video: true}).then(function (stream) {
+                document.querySelector("#videoElement").srcObject = stream;
+            })
+        }
+    </script>
+
+    <script>
+        function functionExists(f) {
+            return f && typeof f === "function";
+        }
+
+        var canvas = document.querySelector("#canvasElement");
+        canvas.width = 640 / 2;
+        canvas.height = 480 / 2;
+        var context = canvas.getContext("2d");
+        var imagesAccepted = 0;
+        //canvas.addEventListener("click", function () {
+        function grabImage() {
+            var video = document.querySelector("#videoElement");
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            var greenChannel = new Uint8Array(canvas.width * canvas.height);
+
+            var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            for (var idx = 0; idx < imageData.data.length; idx += 4) {
+                imageData.data[idx] = imageData.data[idx + 1];
+                imageData.data[idx + 2] = imageData.data[idx + 1];
+
+                greenChannel[idx / 4] = imageData.data[idx + 1];
+            }
+            context.putImageData(imageData, 0, 0);
+
+            var buf = Module._malloc(greenChannel.length * greenChannel.BYTES_PER_ELEMENT);
+            Module.HEAPU8.set(greenChannel, buf);
+            imagesAccepted += Module._add_image(canvas.width, canvas.height, buf);
+            Module._free(buf);
+
+            console.log("Total accepted images: " + imagesAccepted);
+            if (imagesAccepted === 30) {
+                var calibration = Module._solve_for_calibration();
+
+                console.log("Camera calibrated:");
+                var offset = 0;
+                console.log("\twidth: " + Module.getValue(offset + calibration, "i32"));
+                offset += 4;
+                console.log("\theight: " + Module.getValue(offset + calibration, "i32"));
+                offset += 4;
+                console.log("\terror: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tfx: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tfy: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tcx: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tcy: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tk1: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tk2: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tp1: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tp2: " + Module.getValue(offset + calibration, "double"));
+                offset += 8;
+                console.log("\tk3: " + Module.getValue(offset + calibration, "double"));
+            }
+            else if (imagesAccepted < 30) {
+                setTimeout(grabImage, 1000);
+            }
+        }
+        //});
+
+        setTimeout(function () {
+            if (functionExists(Module._add_image)) {
+                console.log("The add image function exists!");
+            }
+
+            if (functionExists(Module._solve_for_calibration)) {
+                console.log("The calibration function exists!");
+            }
+
+            if (functionExists(Module._initialize)) {
+                console.log("The initialization function exists, too!  I'm calling it.");
+                Module._initialize();
+            }
+
+            grabImage();
+        }, 5000);
+    </script>
+</body>
+
+</html>
